@@ -1,0 +1,29 @@
+trigger LeadTrigger on Lead (before insert, before update) {
+    Set<String> leadEmails = new Set<String>();
+
+    // Collect Lead email addresses from incoming records
+    for (Lead lead : Trigger.new) {
+        if (lead.Email != null) {
+            leadEmails.add(lead.Email.toLowerCase());
+        }
+    }
+
+    // Only proceed if there are email addresses to check
+    if (!leadEmails.isEmpty()) {
+        // Query Contact records with matching emails
+        List<Contact> matchingContacts = [SELECT Id, Email FROM Contact WHERE Email IN :leadEmails];
+
+        // Create a set of emails for quick lookup
+        Set<String> contactEmails = new Set<String>();
+        for (Contact contact : matchingContacts) {
+            contactEmails.add(contact.Email.toLowerCase());
+        }
+
+        // Prevent insert or update if a match is found
+        for (Lead lead : Trigger.new) {
+            if (contactEmails.contains(lead.Email.toLowerCase())) {
+                lead.addError('A matching Contact record already exists with this email. Lead creation or update is not allowed.');
+            }
+        }
+    }
+}
