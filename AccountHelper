@@ -1,0 +1,28 @@
+public class AccountHelper {
+    public static Id findUltimateParent(Id accountId) {
+        // Validate accountId
+        if (accountId == null) {
+            return null;
+        }
+
+        // Initialize the accountId variable
+        Id currentAccountId = accountId;
+
+        // Loop until we find the ultimate parent
+        while (true) {
+            // Query the account to get its parent
+            Account currentAccount = [SELECT Id, ParentId FROM Account WHERE Id = :currentAccountId LIMIT 1];
+
+            // If the account has no parent, break the loop
+            if (currentAccount.ParentId == null) {
+                break;
+            }
+
+            // Update currentAccountId to its parent
+            currentAccountId = currentAccount.ParentId;
+        }
+
+        // Return the ultimate parent Id
+        return currentAccountId;
+    }
+}
