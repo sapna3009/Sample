@@ -1,0 +1,50 @@
+trigger LeadTrigger on Lead (before insert, before update) {
+    if(Trigger.isBefore && (Trigger.isInsert || Trigger.isUpdate)) {
+        LeadHelper.preventLeadIfContactExists(Trigger.new);
+    }
+}
+
+public class LeadHelper {
+
+    // Method to check if a matching contact exists by email and prevent lead creation/update
+    public static void preventLeadIfContactExists(List<Lead> leads) {
+        // Set to store unique emails from Leads
+        Set<String> leadEmails = new Set<String>();
+
+        // Collect all emails from the incoming leads
+        for(Lead lead : leads) {
+            if (lead.Email != null) {
+                leadEmails.add(lead.Email);
+            }
+        }
+
+        // If no leads with emails, return early
+        if (leadEmails.isEmpty()) {
+            return;
+        }
+
+        // Query contacts where the email matches the Lead emails
+        List<Contact> matchingContacts = [
+            SELECT Id, Email 
+            FROM Contact 
+            WHERE Email IN :leadEmails
+        ];
+
+        // Convert list to a map for quick lookup
+        Map<String, Contact> emailToContactMap = new Map<String, Contact>();
+
+        for (Contact contact : matchingContacts) {
+            if (contact.Email != null) {
+                emailToContactMap.put(contact.Email, contact);
+            }
+        }
+
+        // Now loop through the lead records and add an error if a matching contact is found
+        for(Lead lead : leads) {
+            if (emailToContactMap.containsKey(lead.Email)) {
+                lead.addError('Cannot create or update Lead. A matching Contact record with this email already exists.');
+            }
+        }
+    }
+}
+
