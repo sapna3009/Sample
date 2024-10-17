@@ -1,0 +1,37 @@
+for second scenario if 2 contacts are there with same email
+
+If there are two contacts with the same email (test1@gmail.com), and someone tries to create or edit a Lead with the same email, the behavior depends on how your logic is written to handle duplicates.
+
+Scenario: Two Contacts with the Same Email
+Duplicate Contacts: In Salesforce, it is possible (though not ideal) to have multiple contacts with the same email. This situation creates ambiguity when checking for matches against leads.
+If Lead Creation/Update Logic Looks for Matching Contacts:
+When creating or updating a Lead with the email test1@gmail.com:
+The logic will likely query the Contact object for any record with an email matching test1@gmail.com.
+Since there are two matching contacts, the query will return multiple results.
+Possible Outcomes:
+If the logic handles duplicates properly:
+
+Your code may handle the situation by preventing the Lead creation or update if more than one contact is found.
+In this case, the Lead creation/update will fail with a message indicating there are multiple matching contacts, preventing ambiguity.
+If the logic does not account for multiple contacts:
+
+If your code does not handle multiple matching contacts, it might either:
+Cause an error (e.g., too many results in the query).
+Unintentionally create or update the Lead, potentially linking it to one of the contacts arbitrarily, which may not be the desired behavior.
+Best Practices for Handling This Case:
+Modify the Logic to Handle Duplicates: Check for multiple matching contacts and add logic to either:
+Prevent lead creation/update if more than one matching contact is found.
+Provide a mechanism to resolve which contact the lead should be associated with (e.g., via a user prompt or selection).
+
+
+List<Contact> matchingContacts = [SELECT Id FROM Contact WHERE Email = :lead.Email LIMIT 2];
+
+if (matchingContacts.size() > 1) {
+    // Prevent lead creation/update due to ambiguity
+    lead.addError('Cannot create/update lead. Multiple contacts exist with this email.');
+} else if (matchingContacts.size() == 1) {
+    // Proceed with the logic for a single match
+}
+
+
+If there are two contacts with the same email, and your logic checks for matching contacts, the lead creation or update will likely fail or produce unintended results unless the code is designed to handle such situations. Ideally, the system should prevent duplicate contacts with the same email to avoid these complications.
