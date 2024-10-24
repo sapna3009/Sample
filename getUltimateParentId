@@ -1,0 +1,14 @@
+public static Id getUltimateParentId(Id accountId) {
+    Account currentAccount = [SELECT Id, ParentId FROM Account WHERE Id = :accountId];
+    
+    while (currentAccount.ParentId != null) {
+        currentAccount = [SELECT Id, ParentId FROM Account WHERE Id = :currentAccount.ParentId];
+    }
+    
+    return currentAccount.Id; // This will return the ultimate parent ID
+}
+
+Explanation:
+This code checks if the ParentId is null. If not, it keeps querying the parent account until it reaches the top of the hierarchy (where ParentId == null).
+It directly finds the ultimate parent without manually traversing the hierarchy one by one.
+In your example for Id: 5, it would immediately find Id: 1 as the ultimate parent.
