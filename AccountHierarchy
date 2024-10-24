@@ -1,0 +1,15 @@
+public class AccountHierarchy {
+
+    // Method to find the ultimate parent for a given Account
+    public static Account getUltimateParent(Id accountId) {
+        Account currentAccount = [SELECT Id, Name, ParentId FROM Account WHERE Id = :accountId LIMIT 1];
+        
+        // Recursively traverse the hierarchy until there is no ParentId
+        while (currentAccount.ParentId != null) {
+            currentAccount = [SELECT Id, Name, ParentId FROM Account WHERE Id = :currentAccount.ParentId LIMIT 1];
+        }
+
+        // Return the ultimate parent (or the original account if no parent exists)
+        return currentAccount;
+    }
+}
