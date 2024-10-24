@@ -1,0 +1,30 @@
+public class AccountHierarchyOptimized {
+
+    // Method to find the ultimate parent for a given Account
+    public static Id getUltimateParentId(Id accountId) {
+        // Query to get all related accounts (account + its parents)
+        List<Account> accounts = [SELECT Id, ParentId FROM Account 
+                                  WHERE Id = :accountId 
+                                  OR Id IN (SELECT ParentId FROM Account WHERE ParentId != null)];
+        
+        // Create a map to store Id -> ParentId for quick lookup
+        Map<Id, Id> accountParentMap = new Map<Id, Id>();
+        for (Account acc : accounts) {
+            accountParentMap.put(acc.Id, acc.ParentId);
+        }
+        
+        // Start from the given accountId and find the ultimate parent
+        Id currentId = accountId;
+        while (accountParentMap.get(currentId) != null) {
+            currentId = accountParentMap.get(currentId);
+        }
+
+        // Return the ultimate parent Id
+        return currentId;
+    }
+}
+
+Explanation:
+Single Query: The query fetches the account with the given Id and any accounts that are parents (using a subquery to fetch parent accounts).
+In-Memory Map: It stores Id → ParentId mappings in a map for quick lookup.
+Traverse in Memory: It uses a while loop to traverse the map in memory and finds the ultimate parent.
