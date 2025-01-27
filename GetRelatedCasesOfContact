@@ -1,0 +1,26 @@
+public with sharing class GetRelatedCasesOfContact {
+    @InvocableMethod(label='Get Cases by Contact ID' description='Fetches a list of cases based on the Contact ID provided.')
+    public static List<List<Case>> getCasesByContact(List<Id> contactIds) {
+        List<List<Case>> res = new List<List<Case>>();
+        System.debug('contactIds ==>'+contactIds);
+        // Validate input
+        if(contactIds == null || contactIds.isEmpty()) {
+            return res;
+        }
+
+        // Query the cases based on the Contact ID
+        List<Case> caseList = [
+            SELECT Id, CaseNumber, RecordType.Name, Primary_Reason__c, Platform__c, Case_Feed_Summary__c 
+            FROM Case 
+            WHERE ContactId = :contactIds[0] AND CreatedDate = LAST_N_MONTHS:6 order by CreatedDate desc limit 10
+        ];
+        
+        if(!caseList.isEmpty()){
+            res.add(caseList);
+            System.debug('relatedCases size==>'+caseList.size());
+        }else{
+            System.debug('no cases fetched');
+        }
+        return res;
+    }
+}
