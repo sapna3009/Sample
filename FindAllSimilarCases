@@ -1,0 +1,193 @@
+public with sharing class FindAllSimilarCases {
+    @InvocableMethod(label='Find All Similar Cases' description='Returns a list of related cases with specified criteria.' category='Case')
+    public static List<CaseWrapper> getRelatedCases(List<Id> caseIds) {
+        // Initialize the result list
+        List<CaseWrapper> res = new List<CaseWrapper>();
+        System.debug('caseIds ==>' + caseIds);
+        
+        // Check if caseIds list is empty or null
+        if (caseIds == null || caseIds.isEmpty()) {
+            return res;
+        }
+
+        // Query to get the details of the first case from the list
+        Case inputCase = [SELECT Id, RecordTypeId, Persona__c, Affiliation__c, Region__c, Platform__c, Primary_Reason__c 
+                          FROM Case 
+                          WHERE Id = :caseIds[0] 
+                          LIMIT 1];
+        System.debug('inputCase ==>' + inputCase);
+        
+        if (inputCase != null) {
+            // Query to find related cases based on the first case's attributes
+            List<Case> relatedCases = [SELECT Id, CaseNumber, CreatedDate, ClosedDate, Resolution__c
+                                        FROM Case
+                                        WHERE RecordTypeId = :inputCase.RecordTypeId 
+                                          AND Persona__c = :inputCase.Persona__c 
+                                          AND Affiliation__c = :inputCase.Affiliation__c 
+                                          AND Region__c = :inputCase.Region__c 
+                                          AND Platform__c = :inputCase.Platform__c 
+                                          AND Primary_Reason__c = :inputCase.Primary_Reason__c 
+                                          AND Status = 'Closed' 
+                                          AND Id != :inputCase.Id 
+                                        ORDER BY CreatedDate DESC 
+                                        LIMIT 10];
+            if (!relatedCases.isEmpty()) {
+                List<Case> caseList = new List<Case>();
+                for(Case cse:relatedCases){
+                    //Case c = new Case(Id = cse.Id, Resolution__c = cse.Resolution__c, CreatedDate = cse.CreatedDate, ClosedDate = cse.ClosedDate);
+                    if(String.isNotBlank(cse.Resolution__c)){
+                        Map<String, String> cseRec = new Map<String, String>();
+                        cseRec.put('id', cse.Id); // Don't need to pass other field values even if referenced in the template, just the Id
+                        ConnectApi.WrappedValue caseValue = new ConnectApi.WrappedValue();
+                        caseValue.value = cseRec;
+                        Map<String, ConnectApi.WrappedValue> inputParams = new Map<String, ConnectApi.WrappedValue>();
+                        inputParams.put('Input:Case_Detail', caseValue); // Case_Detail is the API Name we gave to the input
+
+                        ConnectApi.EinsteinPromptTemplateGenerationsInput executeTemplateInput = new ConnectApi.EinsteinPromptTemplateGenerationsInput();
+                        executeTemplateInput.additionalConfig = new ConnectApi.EinsteinLlmAdditionalConfigInput();
+                        executeTemplateInput.additionalConfig.applicationName = 'PromptBuilderPreview';
+                        executeTemplateInput.isPreview = false;
+                        executeTemplateInput.inputParams = inputParams;
+                        ConnectApi.EinsteinPromptTemplateGenerationsRepresentation generationsOutput;
+                        ConnectApi.EinsteinLLMGenerationItemOutput response;
+                        if(!Test.isRunningTest()){
+                            generationsOutput = ConnectApi.EinsteinLLM.generateMessagesForPromptTemplate(
+                                'Summarise_Case_Resolution_Field',
+                                executeTemplateInput
+                            );
+                            response = generationsOutput.generations[0];
+                        }
+                        String resp = response != null ? response.text: '';  
+                        cse.Resolution__c = resp;
+                        System.debug('response=>'+resp);  
+                    }   
+                    caseList.add(cse);                                                                
+                }
+                System.debug('relatedCases=>'+relatedCases);
+                System.debug('caseList=>'+caseList);
+                CaseWrapper wrapper = new CaseWrapper();
+                wrapper.cases = caseList; // Corrected variable name here
+                res.add(wrapper);
+            }
+        }
+
+        return res;
+    }
+
+    public class CaseWrapper {
+        @InvocableVariable
+        public List<Case> cases;
+    }
+
+    @AuraEnabled(cacheable=true)
+    public static List<Case> getSimilarCases(Id caseId) {
+        // Initialize an empty list to store the related cases
+        List<Case> relatedCases = new List<Case>();
+        List<Case> caseList = new List<Case>();
+
+        // Check if the provided caseId is not null
+        if (caseId == null) {
+            return relatedCases;
+        }
+
+        // Query to get the details of the specified case
+        Case inputCase = [SELECT Id, RecordTypeId, Persona__c, Affiliation__c, Region__c, Platform__c, Primary_Reason__c 
+                            FROM Case 
+                            WHERE Id = :caseId 
+                            LIMIT 1];
+
+        // If the case exists, find related cases
+        if (inputCase != null) {
+            relatedCases = [SELECT Id, CaseNumber, Primary_Reason__c, Resolution__c
+                            FROM Case
+                            WHERE RecordTypeId = :inputCase.RecordTypeId 
+                                AND Persona__c = :inputCase.Persona__c 
+                                AND Affiliation__c = :inputCase.Affiliation__c 
+                                AND Region__c = :inputCase.Region__c 
+                                AND Platform__c = :inputCase.Platform__c 
+                                AND Primary_Reason__c = :inputCase.Primary_Reason__c 
+                                AND Status = 'Closed' 
+                                AND Id != :inputCase.Id 
+                            ORDER BY CreatedDate DESC 
+                            LIMIT 10];
+        }
+
+       // return caseList;
+        return relatedCases;
+    }
+
+    @AuraEnabled(cacheable=true)
+    public static List<Map<String, String>> getSummarizationOfResolutionNReason(Id caseId) {
+        List<Map<String, String>> caseSummaryList = new List<Map<String, String>>();
+    
+        if (caseId == null) {
+            return caseSummaryList;
+        }
+
+        // Query to get the details of the specified case
+        Case inputCase = [SELECT Id, RecordTypeId, Persona__c, Affiliation__c, Region__c, Platform__c, Primary_Reason__c 
+                            FROM Case 
+                            WHERE Id = :caseId 
+                            LIMIT 1];
+
+        // If the case exists, find related cases
+        if (inputCase != null) {
+            List<Case> relatedCases = [SELECT Id, CaseNumber, Primary_Reason__c, Resolution__c
+                                        FROM Case
+                                        WHERE RecordTypeId = :inputCase.RecordTypeId 
+                                            AND Persona__c = :inputCase.Persona__c 
+                                            AND Affiliation__c = :inputCase.Affiliation__c 
+                                            AND Region__c = :inputCase.Region__c 
+                                            AND Platform__c = :inputCase.Platform__c 
+                                            AND Primary_Reason__c = :inputCase.Primary_Reason__c 
+                                            AND Status = 'Closed' 
+                                            AND Id != :inputCase.Id 
+                                        ORDER BY CreatedDate DESC 
+                                        LIMIT 10];
+            if (!relatedCases.isEmpty()) {
+                for (Case cse : relatedCases) {
+                    if (String.isNotBlank(cse.Resolution__c)) {
+                        // Prepare input data for the LLM API
+                        Map<String, String> caseData = new Map<String, String>();
+                        caseData.put('id', cse.Id);
+                        caseData.put('CaseNumber', cse.CaseNumber);
+                        caseData.put('Resolution', cse.Resolution__c);
+        
+                        ConnectApi.WrappedValue caseValue = new ConnectApi.WrappedValue();
+                        caseValue.value = caseData;
+        
+                        Map<String, ConnectApi.WrappedValue> inputParams = new Map<String, ConnectApi.WrappedValue>();
+                        inputParams.put('Input:Case_Detail', caseValue); 
+        
+                        ConnectApi.EinsteinPromptTemplateGenerationsInput input = new ConnectApi.EinsteinPromptTemplateGenerationsInput();
+                        input.isPreview = false;
+                        input.inputParams = inputParams;
+        
+                        ConnectApi.EinsteinPromptTemplateGenerationsRepresentation generations;
+                        ConnectApi.EinsteinLLMGenerationItemOutput response;
+                        if(!Test.isRunningTest()){
+                            generations = ConnectApi.EinsteinLLM.generateMessagesForPromptTemplate(
+                                'Summarise_Case_Resolution_Field',
+                                input
+                            );
+                            response = generations.generations[0];
+                        }
+                        String summary = response != null? response.text : '';
+                             
+                        // Create a map for returning to the front-end
+                        Map<String, String> summarizedCaseData = new Map<String, String>();
+                        summarizedCaseData.put('CaseNumber', cse.CaseNumber);
+                        summarizedCaseData.put('PrimaryReason', cse.Primary_Reason__c);
+                        summarizedCaseData.put('SummarizedResolution', summary);
+        
+                        caseSummaryList.add(summarizedCaseData);
+                    }
+                }
+            }
+        }
+        
+        return caseSummaryList;
+        
+    }
+    
+}
