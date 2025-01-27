@@ -1,0 +1,352 @@
+public class ZAPEX_HELP_SEARCH {
+    @InvocableMethod(
+    // Matches the API Name of the flex template: Can be executed by prompt builder
+    //CapabilityType='FlexTemplate://PT_Knowledge_Articles'
+    )
+    public static List<Response> searchforContext(List<Request> requests) {
+        List<Response> responses = new List<Response>();
+        Response response = new Response();
+        
+        /* Variable declaration - start  */
+        String DC_Region = requests[0].DC_Region;    // Prompt Input for DC_Region
+        String User_Input = requests[0].User_Input;    // Prompt Input for User_Input
+        String DC_Affiliation = requests[0].DC_Affiliation;   // Prompt Input for DC_Affiliation
+        String DC_Persona = requests[0].DC_Persona;     // Prompt Input for DC_Persona
+        String DC_Keyword = requests[0].DC_Keyword;     // Prompt Input for DC_Keyword
+        String DC_Platform;
+        String DC_Service;
+        String DC_Platform_code;
+        String DC_Service_code;
+        String DC_Region_code;
+        String DC_Affiliation_code;
+        String DC_Persona_code;
+        String quote = '\'';
+        string d_quote = '"';  //Used to create cdp query
+        string WHERE_Y_N;
+        String percent = '%';
+        
+        
+        
+        /*Logic to populate Platform and Service from DC_Keyword- start
+        Technical Need: Prompt builder supports only 5 inputs when using Flex type. As we have reached the limit, service and platform
+            are concatenated(separated by &%) and populated in DC_Keyword via a flow
+            Pseudo Logic:   If DC_Keyword is blank, then populate DC_Platform & DC_Service as blank else
+            Split them by '&%'
+            In case of two splits, both Platform and Service are populated, assign them in DC_Platform and DC_Service
+            In case of one split, then populate corresponding platform or service
+            In cas of no split, populate as blank(which will lead to no where clause in cdp query)
+             */
+        if (DC_Keyword <> 'ZZZ' && DC_Keyword.length() <>2)
+        {
+            List<String> splitValues = DC_Keyword.split('&%');
+            // Check if the split was successful and store in variables
+            if ( DC_Keyword.substring(0,2) <> '&%' && DC_Keyword.substring(DC_Keyword.length() - 2) <> '&%')
+            {
+                DC_Platform = splitValues[0];
+                DC_Service = splitValues[1];
+            }
+            else if ( DC_Keyword.substring(0,2) == '&%')
+            {
+                DC_Service = splitValues[1];
+                DC_Platform ='ZZZ';
+            }
+            else if (DC_Keyword.substring(DC_Keyword.length() - 2) == '&%') {
+                DC_Platform = splitValues[0];
+                DC_Service = 'ZZZ';
+            }
+            
+        }
+        else
+        {
+            DC_Platform ='ZZZ';
+            DC_Service ='ZZZ';
+        }
+        
+        /* Logic to populate Platform and Service from DC_Keyword- end */
+        
+        
+        
+        
+        /* Logic to manipulate standard filtering between Case-contact values to Knowledge Data Categories-start
+        Technical Need: There are not data category for affiliatin for contact affiliatin values Gale Admin, Gale Patron and Internal,
+        due to this the articles will be filtered out
+            Pseudo Logic:   If DC_Affiliation is Gale Admin or Gale Patron or Internal, then make DC_Affiliatin as blank,
+        i.e. no filtering by affiliation column Caribbean & Puerto Rico
+        In case the DC_Affiliation is Kindergarten through Grade 12 (K-12/P-12) then change it to Secondary (K12) &
+                        Language School to Private Language School respectively. This is done due to different values for affiliation for contact and data category
+            Similatly no filtering by region if region is       */
+            if ( 
+            DC_Affiliation == 'Gale Admin' ||   // Delete when Gale Admin goes live with Knowledge Data Category Mapping - Check with Samuel White
+            DC_Affiliation == 'Gale Patron' ||  // Delete when Gale Patron goes live with Knowledge Data Category Mapping - Check with Samuel White
+            DC_Affiliation == 'Internal' )
+        {
+            DC_Affiliation = 'ZZZ';
+        }
+        else if (DC_Affiliation == 'Kindergarten through Grade 12 (K-12/P-12)')
+        {
+            DC_Affiliation = 'Secondary (K12)';
+        }
+        else if (DC_Affiliation == 'Language School')
+        {
+            DC_Affiliation = 'Private Language School';
+        }
+
+        IF (DC_Region=='Caribbean & Puerto Rico')
+        {
+            DC_Region = 'ZZZ';
+        }
+        /* Logic to manipulate standard filtering between Case-contact values to Knowledge Data Categories-end */
+        
+        User_Input = User_Input.replaceAll('\'', '');// Remove any single quote in User input, as they case error in cdp execution
+
+
+        /* Logic to populate Filter keys from Filter text - Start*/
+        /* Technical Requirement: As help.cengage.com data mapping is as per keys, we need to convert filter inputs into corresponding keys before filtering in cdp query  */
+        IF (DC_Region <> 'ZZZ') //Populate Key for Region
+        {
+            
+            String DC_Region_Like = 'RGN%';
+            ConnectApi.CdpQueryInput input_code = new ConnectApi.CdpQueryInput();
+            input_code.sql = 'select a.Label__c Region from Data_Categories_Mapping_mdt_ACAD__dll a where a.Label__c LIKE \''+ DC_Region_Like + '\' AND Region_c__c = \''+ DC_Region + '\'' ;
+            ConnectApi.CdpQueryOutput output_code;
+            if(!Test.isRunningTest()){
+                output_code = ConnectApi.CdpQuery.queryANSISql(input_code);
+            }
+            List<Object> data_code = output_code != null ? output_code.data : new List<Object>();
+            String scs_code = '';
+            for (Object searchRecord_code : data_code) {
+                Map<String, Object> myMap = (Map<String, Object>) JSON.deserializeUntyped(JSON.serialize(searchRecord_code));
+                DC_Region_code = String.valueOf(myMap.get('Region'));
+                break;
+            }
+        }
+        
+        
+        IF (DC_Affiliation <> 'ZZZ')//Populate Key for Affiliation Code
+        {
+            String DC_Affiliation_Like = 'AFL%';
+            ConnectApi.CdpQueryInput input_AFL = new ConnectApi.CdpQueryInput();
+            input_AFL.sql = 'select a.Label__c Affiliation from Data_Categories_Mapping_mdt_ACAD__dll a where a.Label__c LIKE \''+ DC_Affiliation_Like + '\' AND Affiliation_c__c = \''+ DC_Affiliation + '\'' ;
+            system.debug(input_AFL);
+            ConnectApi.CdpQueryOutput output_AFL;
+            if(!Test.isRunningTest()){
+                output_AFL = ConnectApi.CdpQuery.queryANSISql(input_AFL);
+            }
+            List<Object> data_AFL = output_AFL != null ? output_AFL.data : new List<Object>();
+            
+            for (Object searchRecord_code : data_AFL) {
+                Map<String, Object> myMap = (Map<String, Object>) JSON.deserializeUntyped(JSON.serialize(searchRecord_code));
+                DC_Affiliation_code = String.valueOf(myMap.get('Affiliation'));
+                break;
+            }
+        }
+        IF (DC_Persona <> 'ZZZ') //Populate Key for Persona
+        {
+            String DC_Persona_Like = 'PRS%';
+            ConnectApi.CdpQueryInput input_PRS = new ConnectApi.CdpQueryInput();
+            input_PRS.sql = 'select a.Label__c Persona from Data_Categories_Mapping_mdt_ACAD__dll a where a.Label__c LIKE \''+ DC_Persona_Like + '\' AND Persona_c__c = \''+ DC_Persona + '\'' ;
+            system.debug(input_PRS);
+            ConnectApi.CdpQueryOutput output_PRS;
+            if(!Test.isRunningTest()){
+                output_PRS = ConnectApi.CdpQuery.queryANSISql(input_PRS);
+            }
+            List<Object> data_PRS = output_PRS != null ? output_PRS.data : new List<Object>();
+            
+            for (Object searchRecord_code : data_PRS) {
+                Map<String, Object> myMap = (Map<String, Object>) JSON.deserializeUntyped(JSON.serialize(searchRecord_code));
+                DC_Persona_code = String.valueOf(myMap.get('Persona'));
+                break;
+            }
+        }
+        IF (DC_Platform <> 'ZZZ')
+        {
+            String DC_Platform_Like = 'PLF%';//Populate Key for Platform
+            ConnectApi.CdpQueryInput input_PLF = new ConnectApi.CdpQueryInput();
+            input_PLF.sql = 'select a.Label__c Platform from Data_Categories_Mapping_mdt_ACAD__dll a where a.Label__c LIKE \''+ DC_Platform_Like + '\' AND Platform_c__c = \''+ DC_Platform + '\'' ;
+            system.debug(input_PLF);
+            ConnectApi.CdpQueryOutput output_PLF;
+            if(!Test.isRunningTest()){
+                output_PLF = ConnectApi.CdpQuery.queryANSISql(input_PLF);
+            }
+            List<Object> data_PLF = output_PLF != null ? output_PLF.data : new List<Object>();
+            
+            for (Object searchRecord_code : data_PLF) {
+                Map<String, Object> myMap = (Map<String, Object>) JSON.deserializeUntyped(JSON.serialize(searchRecord_code));
+                DC_Platform_code = String.valueOf(myMap.get('Platform'));
+                break;
+            }
+        }
+        IF (DC_Service <> 'ZZZ')//Populate Key for Service
+        {
+            String DC_Service_Like = 'SRV%';
+            ConnectApi.CdpQueryInput input_SRV = new ConnectApi.CdpQueryInput();
+            input_SRV.sql = 'select a.Label__c Service from Data_Categories_Mapping_mdt_ACAD__dll a where a.Label__c LIKE \''+ DC_Service_Like + '\' AND Service_c__c = \''+ DC_Service + '\'' ;
+            system.debug(input_SRV);
+            ConnectApi.CdpQueryOutput output_SRV;
+            if(!Test.isRunningTest()){
+                output_SRV = ConnectApi.CdpQuery.queryANSISql(input_SRV);
+            }
+            List<Object> data_SRV = output_SRV != null ? output_SRV.data : new List<Object>();
+            
+            for (Object searchRecord_code : data_SRV) {
+                Map<String, Object> myMap = (Map<String, Object>) JSON.deserializeUntyped(JSON.serialize(searchRecord_code));
+                DC_Service_code = String.valueOf(myMap.get('Service'));
+                break;
+            }
+        }
+        /* Logic to populate Filter keys from Filter text - End*/
+        
+        
+        
+        
+        
+        
+        
+        
+        
+        /* Logic to figure out if cdp query will have a where clause-start */
+        if (DC_Affiliation =='ZZZ' && DC_Persona =='ZZZ'  && DC_Region =='ZZZ' && DC_Platform =='ZZZ' && DC_Service =='ZZZ')
+        {
+            WHERE_Y_N = 'N';
+        }
+        ELSE
+        {
+            {
+                WHERE_Y_N = 'Y';
+            }
+            
+        }
+        /* Logic to figure out if cdp query will have a where clause-end */
+        
+        
+        /* CDP Query Creation-start */
+        ConnectApi.CdpQueryInput input = new ConnectApi.CdpQueryInput(); // Input cdp query declaration
+        input.sql =    'select c.Chunk__c Info,c.SourceRecordid__C ID,v.score__c score,m.URL__c URL_LINK FROM vector_search(table(SI_Help_Article_index__dlm),';
+        input.sql = input.sql+ '  \'' + String.escapeSingleQuotes(User_Input) + '\', \'\'     ,';
+        if ( WHERE_Y_N == 'Y')
+        {
+            input.sql = input.sql +  '80) '; //In case of a filter 80 chunks are outputed
+        }
+        else
+        {
+            input.sql = input.sql +  '70) '; //In case of no filter 70 chunks are outputed
+        }
+        
+        input.sql = input.sql+ ' v  JOIN SI_Help_Article_chunk__dlm c ON v.RecordId__c = c.RecordId__c join UDMO_Help_Article__dlm u on c.SourceRecordID__c = u.FilePath__c';
+        input.sql = input.sql+ ' join DMO_Help_Article_Metadata_DC_ACAD__dlm m on m.Path__c = u.FilePath__c';//Join conditin with Data Category DMO in case of where clause
+        
+        IF (WHERE_Y_N == 'Y')
+        {
+            input.sql = input.sql + ' WHERE ';
+        }
+        if (DC_Persona <> 'ZZZ') // Add persona filter in case persona filter is not blank
+        {
+            input.sql = input.sql +  ' m.Data_Category__c LIKE '+ quote + percent+d_quote+ DC_Persona_code +d_quote+percent+ quote;
+            
+        }
+        if (DC_Affiliation <> 'ZZZ') // Add affiliation filter in case affiliation filter is not blank
+        {
+            if (DC_Persona <> 'ZZZ') //To add and in case filter is not the first filter applied
+            {
+                input.sql = input.sql +' AND ';
+            }
+            
+            
+            
+            input.sql = input.sql +  ' m.Data_Category__c LIKE '+ quote + percent+d_quote+ DC_Affiliation_code +d_quote+percent+ quote;
+            
+        }
+        if (DC_Region <> 'ZZZ') // Add region filter in case region filter is not blank
+        {
+            if (DC_Affiliation <> 'ZZZ') //To add and in case filter is not the first filter applied
+            {
+                input.sql = input.sql +' AND ';
+            }
+            
+            
+            input.sql = input.sql +  ' m.Data_Category__c LIKE '+ quote + percent+d_quote+ DC_Region_code +d_quote+percent+ quote;
+            
+        }
+        if (DC_Platform <> 'ZZZ') // Add platform filter in case platform filter is not blank
+        {
+            
+            if (DC_Region <> 'ZZZ') //To add and in case filter is not the first filter applied
+            {
+                input.sql = input.sql +' AND ';
+            }
+            input.sql = input.sql +  ' m.Data_Category__c LIKE '+ quote + percent+d_quote+ DC_Platform_code +d_quote+percent+ quote;
+            
+        }
+        if (DC_Service <> 'ZZZ') // Add service filter in case service filter is not blank
+        {
+            if (DC_Platform <> 'ZZZ' || DC_Region <> 'ZZZ') //To add and in case filter is not the first filter applied
+            {
+                input.sql = input.sql +' AND ';
+            }
+            input.sql = input.sql +  ' m.Data_Category__c LIKE '+ quote + percent+d_quote+ DC_Service_code +d_quote+percent+ quote;
+            
+        }
+        
+        input.sql = input.sql + ' ORDER by score__c desc LIMIT ';
+        if ( WHERE_Y_N == 'Y')
+        {
+            input.sql = input.sql +  '70'; //In case of a filter 80 chunks are outputed
+            
+        }
+        else
+        {
+            input.sql = input.sql +  '50';//In case of no filter 70 chunks are outputed
+        }
+        
+        System.debug(input);
+        
+        /* CDP Query Creation-end */
+        
+        ConnectApi.CdpQueryOutput output; 
+        if(!Test.isRunningTest()){
+            output = ConnectApi.CdpQuery.queryANSISql(input);
+        }
+        List<Object> data = output != null ? output.data : new List<Object>();
+        String scs = '';
+        Integer counter = 0; // Initialize a counter to track iterations
+        for (Object searchRecord : data) {
+            if (counter >= 50) // This is to make sure in case of filter, output is maximum of 50 values
+            {
+                break; // Exit the loop after 50 iterations
+            }
+            Map<String, Object> myMap = (Map<String, Object>) JSON.deserializeUntyped(JSON.serialize(searchRecord));
+            Map<String, String> sc = new Map<String, String>();
+            //sc.put('score', String.valueOf(myMap.get('score')));
+            sc.put('Info', String.valueOf(myMap.get('Info')));
+            sc.put('ID', String.valueOf(myMap.get('ID')));
+            //sc.put('C_Seq', String.valueOf(myMap.get('C_Seq')));
+            sc.put('URL_LINK', String.valueOf(myMap.get('URL_LINK')));
+            scs = scs + JSON.serialize(sc);
+            counter++; // Increment the counter
+        }
+        response.Prompt = scs;
+        responses.add(response);
+        return responses;
+    }
+    
+    public static boolean getUserRecordAccess(String recordId) {
+        return true;
+    }   
+    // SearchString is a Prompt Template Input String
+    public class Request {
+        @InvocableVariable
+        public String User_Input;
+        @InvocableVariable
+        public string DC_Region;
+        @InvocableVariable
+        public string DC_Persona;
+        @InvocableVariable
+        public string DC_Affiliation;
+        @InvocableVariable
+        public string DC_Keyword;
+    }    
+    public class Response {
+        @InvocableVariable
+        public String Prompt;
+    }
+}
