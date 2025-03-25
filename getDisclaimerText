@@ -8,3 +8,19 @@
         System.debug('displayText::'+displayText);
         return displayText;
     }
+
+
+
+
+getDisplayTex(){
+    getDisclaimerText()
+        .then(result => {
+            
+            if (result) {
+                console.log('result getDisplayTex::'+result);
+            }
+        })
+        .catch(error => {
+            navigateToErrorHandler(error,'Az_patientDashboard');
+        });
+}
