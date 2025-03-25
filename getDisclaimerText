@@ -1,0 +1,10 @@
+@AuraEnabled(cacheable=true)
+    public static String getDisclaimerText(){
+        String userID = UserInfo.getUserId();
+        User loggedInUser = [SELECT Id,AZ_Care_Program_Selected__c,AZ_PatientSelected__c,AccountId,Account.AZ_IsPatient__c,Account.AZ_IsCarer__c,Country,Account.PersonContactId FROM User WHERE Id =: userID LIMIT 1];
+        //AZ_Community_Setting__c objSetting = [Select id, name,AZ_Destination_Field__c,AZ_Order__c from AZ_Community_Setting__c where AZ_Country__c =: loggedInUser.Country and name = 'Disclaimer dashboard' and AZ_Active__c = true and AZ_Care_Programme__c = loggedInUser.AZ_Care_Program_Selected__c limit 1];
+        AZ_Community_Translation__c commTrans = [select id, AZ_Display_Text__c from AZ_Community_Translation__c where AZ_Community_Setting__r.AZ_Active__c = true AND AZ_Community_Setting__r.AZ_Country__c =: loggedInUser.Country and AZ_Community_Setting__r.name = 'Disclaimer dashboard' and AZ_Community_Setting__r.AZ_Care_Programme__r.Name =: loggedInUser.AZ_Care_Program_Selected__c limit 1];
+        String displayText = (commTrans != null && commTrans.AZ_Display_Text__c != null)? commTrans.AZ_Display_Text__c.replaceAll('<.*?>', '') : '';
+        System.debug('displayText::'+displayText);
+        return displayText;
+    }
