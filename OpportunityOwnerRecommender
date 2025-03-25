@@ -1,0 +1,120 @@
+public with sharing class OpportunityOwnerRecommender {
+    
+    public class Request {
+        @InvocableVariable(required = true)
+        public String recordId; // Opportunity or Account Id
+    }
+    
+    public class Response {
+        @InvocableVariable
+        public Id suggestedOwnerId;
+        
+        @InvocableVariable
+        public String suggestedOwnerName;
+    }
+    
+    @InvocableMethod(label='Suggest New Owner' description='Finds the best new owner for an opportunity or account')
+    public static List<Response> suggestNewOwner(List<Request> requests) {
+        List<Response> responses = new List<Response>();
+        Set<Id> recordIds = new Set<Id>();
+        
+        // Collect record IDs from requests
+        for (Request req : requests) {
+            recordIds.add(req.recordId);
+        }
+        
+        // Fetch Opportunities and Accounts in a single query
+        Map<Id, sObject> recordsMap = new Map<Id, sObject>();
+        Set<Id> managerIdSet = new Set<Id>();
+        Set<Id> currentOwnerIds = new Set<Id>();
+        for (Opportunity opp : [SELECT Id, OwnerId, Owner.ManagerId FROM Opportunity WHERE Id IN :recordIds]) {
+            recordsMap.put(opp.Id, opp);
+            if(opp.OwnerId != null){
+                currentOwnerIds.add(opp.OwnerId);
+            }
+            if (opp.Owner.ManagerId != null) {
+                managerIdSet.add(opp.Owner.ManagerId);
+            }
+        }
+        for (Account acc : [SELECT Id, OwnerId, Owner.ManagerId FROM Account WHERE Id IN :recordIds]) {
+            recordsMap.put(acc.Id, acc);
+            if(acc.OwnerId != null){
+                currentOwnerIds.add(acc.OwnerId);
+            }
+            if (acc.Owner.ManagerId != null) {
+                managerIdSet.add(acc.Owner.ManagerId);
+            }
+        }
+        
+        // Fetch direct reports for all managers in one query
+        Map<Id, List<User>> managerToReportsMap = new Map<Id, List<User>>();
+        for (User report : [SELECT Id, Name, ManagerId FROM User WHERE Id NOT IN:currentOwnerIds AND ManagerId IN :managerIdSet AND IsActive = TRUE]) {
+            if (!managerToReportsMap.containsKey(report.ManagerId)) {
+                managerToReportsMap.put(report.ManagerId, new List<User>());
+            }
+            managerToReportsMap.get(report.ManagerId).add(report);
+        }
+        
+        // Fetch open opportunities count and closest close date for all direct reports in one query
+        Map<Id, Integer> userOpenOppCount = new Map<Id, Integer>();
+        Map<Id, Date> userEarliestCloseDate = new Map<Id, Date>();
+        Set<Id> allDirectReportIds = managerToReportsMap.keySet();
+        
+        for (AggregateResult ar : [
+            SELECT OwnerId, COUNT(Id) numOpenOpps, MIN(CloseDate) minCloseDate
+            FROM Opportunity
+            WHERE OwnerId IN :allDirectReportIds 
+            AND StageName != 'Closed'
+            GROUP BY OwnerId
+        ]) {
+            Id ownerId = (Id)ar.get('OwnerId');
+            userOpenOppCount.put(ownerId, (Integer)ar.get('numOpenOpps'));
+            userEarliestCloseDate.put(ownerId, (Date)ar.get('minCloseDate'));
+        }
+        
+        // Determine the best owner for each request
+        for (Request req : requests) {
+            Response res = new Response();
+            Id recordId = req.recordId;
+            
+            if (!recordsMap.containsKey(recordId)) {
+                responses.add(res);
+                continue;
+            }
+            
+            sObject record = recordsMap.get(recordId);
+            Id ownerId = (Id)record.get('OwnerId');
+            Id managerId = !managerIdSet.isEmpty() ? managerIdSet.iterator().next() : null;
+            
+            if (managerId == null || !managerToReportsMap.containsKey(managerId)) {
+                responses.add(res);
+                continue;
+            }
+            
+            List<User> directReports = managerToReportsMap.get(managerId);
+            User bestCandidate;
+            Integer minOpenOppCount = 100;
+            Date farthestCloseDate = Date.today().addYears(10);
+            
+            for (User u : directReports) {
+                Integer openOpps = userOpenOppCount.containsKey(u.Id) ? userOpenOppCount.get(u.Id) : 0;
+                Date earliestClose = userEarliestCloseDate.containsKey(u.Id) ? userEarliestCloseDate.get(u.Id) : Date.today().addYears(10);
+                
+                if (openOpps < minOpenOppCount || (openOpps == minOpenOppCount && earliestClose > farthestCloseDate)) {
+                    bestCandidate = u;
+                    minOpenOppCount = openOpps;
+                    farthestCloseDate = earliestClose;
+                }
+            }
+            
+            if (bestCandidate != null) {
+                res.suggestedOwnerId = bestCandidate.Id;
+                res.suggestedOwnerName = bestCandidate.Name;
+            }
+            
+            responses.add(res);
+        }
+        
+        return responses;
+    }
+}
