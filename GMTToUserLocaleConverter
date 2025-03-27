@@ -1,0 +1,44 @@
+public without sharing class GMTToUserLocaleConverter {
+        
+    public class Request {
+        @InvocableVariable(required=true)
+        public DateTime startDateTime;  // Start DateTime in GMT
+        
+        @InvocableVariable(required=true)
+        public DateTime endDateTime;    // End DateTime in GMT
+    }
+
+    public class Response {
+        @InvocableVariable
+        public DateTime localizedStartDateTime; // Start DateTime in User's Timezone
+        
+        @InvocableVariable
+        public DateTime localizedEndDateTime;   // End DateTime in User's Timezone
+    }
+
+    @InvocableMethod(label='Convert GMT to User Locale' description='Converts GMT Start and End DateTime to logged-in user’s timezone')
+    public static List<Response> convertToUserLocale(List<Request> requests) {
+        List<Response> responses = new List<Response>();
+
+        TimeZone userTimeZone = UserInfo.getTimeZone();
+        for (Request req : requests) {
+            Response res = new Response();
+            
+            if (req.startDateTime != null) {
+                Integer offsetSeconds = userTimeZone.getOffset(req.startDateTime) / 1000; // Get offset for that DateTime
+                res.localizedStartDateTime = req.startDateTime.addSeconds(-offsetSeconds);
+                System.debug('Converted Start (GMT): ' + res.localizedStartDateTime);
+            }
+            
+            if (req.endDateTime != null) {
+                Integer offsetSeconds = userTimeZone.getOffset(req.endDateTime) / 1000; // Get offset for that DateTime
+                res.localizedEndDateTime = req.endDateTime.addSeconds(-offsetSeconds);
+                System.debug('Converted End (GMT): ' + res.localizedEndDateTime);
+            }
+
+            responses.add(res);
+        }
+
+        return responses;
+    }
+}
