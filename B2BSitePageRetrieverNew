@@ -1,0 +1,104 @@
+public with sharing class B2BSitePageRetriever {
+
+    public class UserInputWrapper {
+        @InvocableVariable(label='User Input')
+        public String userInput;
+    }
+
+    public class PageResult {
+        @InvocableVariable(label='Page Label')
+        public String label;
+
+        @InvocableVariable(label='Page URL')
+        public String url;
+    }
+
+    @InvocableMethod(label='Get Site Pages from User Input')
+    public static List<PageResult> fetchPages(List<UserInputWrapper> inputs) {
+        List<PageResult> results = new List<PageResult>();
+        if (inputs.isEmpty()) return results;
+
+        String input = inputs[0].userInput != null ? inputs[0].userInput.toLowerCase() : '';
+
+        /*// Keywords mapped to label fragments
+        Map<String, String> keywordToLabel = new Map<String, String>{
+            'order' => 'order',
+            'password' => 'profile',
+            'profile' => 'profile',
+            'address' => 'address',
+            'approval' => 'approval',
+            'user' => 'user',
+            'list' => 'list'
+        };*/
+        
+        Map<String, String> keywordToLabel = new Map<String, String>();
+        for (Page_Keyword_Mapping__mdt mdt : [
+            SELECT Keyword__c, Label_Fragment__c
+            FROM Page_Keyword_Mapping__mdt
+        ]) {
+            if (!String.isBlank(mdt.Keyword__c) && !String.isBlank(mdt.Label_Fragment__c)) {
+                keywordToLabel.put(mdt.Keyword__c.toLowerCase(), mdt.Label_Fragment__c.toLowerCase());
+            }
+        }
+        
+        //Build base URL
+        String sitePrefix = URL.getOrgDomainUrl().toExternalForm();
+        String communityPath = Site.getPathPrefix();
+        String baseUrl = sitePrefix + communityPath;
+
+        /*Id networkId = Network.getNetworkId();
+
+        Id navigationLinkSetId;
+        
+        List<NavigationLinkSet> linkSets = [
+            SELECT Id
+            FROM NavigationLinkSet
+            WHERE NetworkId = :networkId
+            LIMIT 1
+        ];
+        
+        if (!linkSets.isEmpty()) {
+            navigationLinkSetId = linkSets[0].Id;
+        } else {
+            // fallback or throw error
+            return results;
+        }
+        
+        // Then query NavigationMenuItem
+        List<NavigationMenuItem> menuItems = [
+            SELECT Label, Target
+            FROM NavigationMenuItem
+            WHERE NavigationLinkSetId = :navigationLinkSetId AND Status = 'Live'
+            ORDER BY Position ASC
+        ];
+        
+        */// Query NavigationMenuItem
+        List<NavigationMenuItem> menuItems = [
+            SELECT Label, Target
+            FROM NavigationMenuItem
+            WHERE NavigationLinkSetId = '0LmHu000000YxlEKAS' AND Status = 'Live'
+            ORDER BY Position ASC
+        ];
+        
+        Integer matchedCount = 0;
+
+        for (NavigationMenuItem item : menuItems) {
+            if (matchedCount >= 3) break;
+
+            String labelLower = item.Label != null ? item.Label.toLowerCase() : '';
+
+            for (String keyword : keywordToLabel.keySet()) {
+                if (input.contains(keyword) && labelLower.contains(keywordToLabel.get(keyword))) {
+                    PageResult pr = new PageResult();
+                    pr.label = item.Label;
+                    pr.url = baseUrl + item.Target;
+                    results.add(pr);
+                    matchedCount++;
+                    break;
+                }
+            }
+        }
+
+        return results;
+    }
+}
